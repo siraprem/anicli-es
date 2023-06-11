@@ -2,23 +2,46 @@ use dialoguer::Input;
 use regex::Regex;
 use std::ops::Index;
 use std::process::Command;
+use json;
 
 mod auxfunctions;
 
+pub fn color_menu(text: &str) -> String {
+    format!("\x1b[93m{}\x1b[0m", text)
+}
+
+pub fn color_category(category: &String) -> String {
+    if category == "Anime" {
+        return format!("\x1b[96m{}\x1b[0m", category);
+    } else if category == "Película" {
+        return format!("\x1b[91m{}\x1b[0m", category);
+    } else if category == "OVA" {
+        return format!("\x1b[38;5;208m{}\x1b[0m", category);
+    } else if category == "Especial" {
+        return format!("\x1b[38;5;13m{}\x1b[0m", category);
+    }
+
+    format!("{}", category)
+}
+
 // recibe un largo(usize) en el cual elegir un índice y un String que dice a que corresponde el
 // índice a elegir y entrega el input del usuario como entero i32
-pub fn choose_index(lenght: usize, que: &str) -> i32 {
-
+pub fn choose_index(lenght: usize, que: &str) -> u16 {
     if lenght == 1 {
         return 0
     }
+
     loop {
-        let mut prompt: String = "Elige un ".to_string();
-        prompt.push_str(que);
+        let index: String = Input::new()
+            .with_prompt(
+                color_menu(
+                    format!("Elige un {}", que).as_str()
+                )
+            )
+            .interact()
+            .unwrap();
 
-        let index: String = Input::new().with_prompt(prompt).interact().unwrap();
-
-        let index: i32 = match index.trim().parse() {
+        let index: u16 = match index.trim().parse() {
             Ok(num) => num,
             Err(_) => {
                 println!("Porfavor escribe un número.");
@@ -38,31 +61,27 @@ pub fn choose_index(lenght: usize, que: &str) -> i32 {
     }
 }
 
-
 // recibe un String como busqueda y devuelve el código fuente del resultado
 pub fn search_query(query: String) -> String {
-    let mut url = "https://monoschinos2.com/buscar?q=".to_string();
-    url.push_str(&query);
+    let url = format!("https://www3.animeflv.net/browse?q={}", query);
 
     auxfunctions::get_source(url).unwrap()
 }
 
-// recibe el código fuente de la busqueda como input y devuelve un vector de vectores por cada
-// animé encontrado, con, el nombre del animé, categoría + año y su link
-pub fn query_results(source: String) -> Vec<Vec<String>> {
+pub fn query_results(source: String) -> Vec<super::Anime> {
+    let mut animes: Vec<super::Anime> = vec![];
 
-    let get_titles = Regex::new("(<h3 class=\"seristitles\">)(.*)(</h3)").unwrap();
-    let get_categories = Regex::new("(<span class=\"seriesinfo\">)(.*)(</span)").unwrap();
-    let get_links = Regex::new("(<div class=\"col-md-4 col-lg-2 col-6\">\n<a href=\")(.*)(\">)").unwrap();
+    let get_titles = Regex::new("<h3 class=\"Title\">([^<]*)</h3>").unwrap();
+    let get_categories = Regex::new("<p><span class=\"Type [^<]*\">([^<]*)</span>").unwrap();
+    let get_links = Regex::new("<a class=\"Button Vrnmlk\" href=\"([^<]*)\">VER ANIME</a>").unwrap();
 
     let mut titles: Vec<String> = Vec::new();
     let mut categories: Vec<String> = Vec::new();
     let mut links: Vec<String> = Vec::new();
 
-
     for t in get_titles.captures_iter(&source) {
         titles.push(
-            t.get(2)
+            t.get(1)
             .unwrap()
             .as_str()
             .to_string()
@@ -73,7 +92,7 @@ pub fn query_results(source: String) -> Vec<Vec<String>> {
 
     for c in get_categories.captures_iter(&source) {
         categories.push(
-            c.get(2)
+            c.get(1)
             .unwrap()
             .as_str()
             .to_string()
@@ -82,256 +101,157 @@ pub fn query_results(source: String) -> Vec<Vec<String>> {
 
     for l in get_links.captures_iter(&source) {
         links.push(
-            l.get(2)
-            .unwrap()
-            .as_str()
-            .to_string()
+            format!("https://www3.animeflv.net{}",  l.get(1).unwrap().as_str())
         );
     }
 
-    let tcl: Vec<Vec<String>> = vec![titles, categories, links];
-    tcl
+    for (i, title) in titles.iter().enumerate() {
+        animes.push(super::Anime {
+            title   : title.to_string(),
+            category: categories[i].to_string(),
+            link    : links[i].to_string(),
+        })
+    }
 
+    animes
 }
 
 // printea los animés encontrados a la pantalla con indices a la izquierda
-pub fn choose_anime(animelist: &Vec<Vec<String>>) -> i32 {
-    if (animelist[0].len()) == 1 {
+pub fn choose_anime(animelist: &Vec<super::Anime>) -> u16 {
+    if animelist.len() == 1 {
         return 0;
     } else {
-        for n in 0..animelist[0].len() {
-            println!("[{}] {} - {}", n+1, animelist[0][n], animelist[1][n]);
+        for (i, anime) in animelist.iter().enumerate() {
+            println!("[{}] {} {}", i+1, color_category(&anime.category), anime.title);
         }
     }
 
-    let animes: String = format!("animé [1-{}]", animelist[0].len());
-    choose_index(animelist[0].len(), animes.as_str())
+    let animes: String = format!("animé [1-{}]", animelist.len());
+    choose_index(animelist.len(), animes.as_str())
 }
 
-// obtiene los links de los episodios de la página y los pone en un vector, si falta un link
-// guarda un link vacío y anota que episodio falta en otro vector
+pub fn choose_episode(episodes: &Vec<String>) -> u16 {
+    choose_index(episodes.len(), format!("episodio [1-{}]", episodes.len()).as_str())
+}
+
+fn choose_lang(episode_lamgs: &Vec<super::AnimeEpisode>) -> u16 {
+    if episode_lamgs.len() == 1 {
+        return 0;
+    } else {
+        for (i, item) in episode_lamgs.iter().enumerate() {
+            println!("[{}] {}", i+1, item.lang);
+        }
+    }
+
+    let langs: String = format!("lenguaje [1-{}]", episode_lamgs.len());
+    choose_index(episode_lamgs.len(), langs.as_str())
+}
+
+fn choose_server(servers: &Vec<super::AnimeEpisodeView>) -> u16 {
+    if servers.len() == 1 {
+        return 0;
+    } else {
+        for (i, server) in servers.iter().enumerate() {
+            println!("[{}] {}", i+1, server.title);
+        }
+    }
+
+    let server_menu: String = format!("Servidor [1-{}]", servers.len());
+    choose_index(servers.len(), server_menu.as_str())
+}
+
 pub fn get_episodes(url: String) -> Vec<String> {
     let source = auxfunctions::get_source(url).unwrap();
-    let fetch_links_and_indexes = Regex::new("(<div class=\"col-item\".*data-episode=\")(.*)(\">.*\n.*<a href=\")(.*)(\">)").unwrap();
-    
-    let mut links: Vec<String> = Vec::new();
-    let mut missing: Vec<i32> = Vec::new();
-    let mut index: i32 = 1; 
+    let url = String::from("https://www3.animeflv.net");
 
-    for n in fetch_links_and_indexes.captures_iter(&source) {
-        let episode_no: i32 = n.get(2).unwrap().as_str().parse().unwrap();
-        if index == episode_no {
-            links.push(n.get(4).unwrap().as_str().to_string());
-        } else {
-            for x in 0..(episode_no-index) {
-                links.push("".to_string());
-                missing.push(index+x);
-            }
-            index = episode_no;
-        }
-        index += 1;
+    let mut episodes: Vec<String> = vec![];
+
+    let get_episodes = Regex::new("\\[([0-9]+),").unwrap();
+
+    // Obtener parte del path de la url
+    let get_episodes_path = Regex::new("var anime_info = (.*);").unwrap().captures(&source).unwrap().get(1).unwrap().as_str();
+    let episodes_path_vec = json::parse(get_episodes_path).unwrap();
+    let episodes_path = episodes_path_vec[2].to_string();
+
+    for n in get_episodes.captures_iter(&source) {
+        episodes.push(
+            format!("{0}/ver/{1}-{2}", url, episodes_path, n.get(1).unwrap().as_str())
+        );
     }
 
-    return links;
+    episodes.reverse();
+
+    episodes
 }
 
-// obtiene los links del mp4 + el reproductor de video embedded si es que el servidor lo requiere,
-// guarda los links en un vector de vectores en que, el primero corresponde al servidor zeus, el
-// segundo uqload y el tercero a videobin
-pub fn episode_link_scrapper(url: String) -> Vec<Vec<String>> {
+pub fn episode_link_scrapper(url: String) -> Vec<super::AnimeEpisode> {
+    let episode_source: String = auxfunctions::get_source(url).unwrap();
 
-    println!(
-        "{esc}[2J{esc}[1;1HObteniendo información del video.\n",
-        esc = 27 as char
-    );
+    let get_episode_servers = Regex::new("var videos = (.*);").unwrap().captures(&episode_source).unwrap();
+    let episode_servers = get_episode_servers.get(1).unwrap().as_str();
+    let scrapper_list = json::parse(episode_servers).unwrap();
 
-    let is_puj = Regex::new("(aHR0cHM6Ly9tb25vc2NoaW5vczIuY29tL3JlcHJvZHVjdG9yP3VybD1odHRwczovL3JlcHJvLm1vbm9zY2hpbm9zMi5jb20vYXF1YS9hbT91cmw9)(.*)(\">puj</a></li>)").unwrap();
-    let mut pdone: bool = false;
+    let mut list: Vec<super::AnimeEpisode> = vec![];
 
-    let is_zeus = Regex::new("(aHR0cHM6Ly9tb25vc2NoaW5vczIuY29tL3JlcHJvZHVjdG9yP3VybD1odHRwczovL3d3dy5zb2xpZGZpbGVzLmNvbS9l)(.*)(\">.eus</a></li>)").unwrap();
-    let mut zdone: bool = false;
-  
-    let is_fembed = Regex::new("(aHR0cHM6Ly9tb25vc2NoaW5vczIuY29tL3JlcHJvZHVjdG9yP3VybD1odHRwczovL3d3dy5mZW1iZWQuY29tL3Yv)(.*)(\">fembed.*</a></li>)").unwrap();
-    let mut fdone: bool = false;
+    for (lang, servers) in scrapper_list.entries() {
+        if servers.is_array() && servers.len() > 0 {
+            let mut anime_episode = super::AnimeEpisode {
+                lang: lang.to_string(),
+                servers: vec![],
+            };
 
-    let is_videobin = Regex::new("(aHR0cHM6Ly9tb25vc2NoaW5vczIuY29tL3JlcHJvZHVjdG9yP3VybD1odHRwczovL3ZpZGVvYmluLmNv)(.*)(\">videobin</a></li>)").unwrap();
-    let mut vdone: bool = false;
-
-    let is_uqload = Regex::new("(aHR0cHM6Ly9tb25vc2NoaW5vczIuY29tL3JlcHJvZHVjdG9yP3VybD1odHRwczovL3VxbG9hZC5jb20v)(.*)(\">uqload</a></li>)").unwrap();
-    let mut qdone: bool = false;
-
-    let mut plink: Vec<String> = vec!["0".to_string()];
-    let mut zlink: Vec<String> = vec!["0".to_string()];
-    let mut flink: Vec<String> = vec!["0".to_string()];
-    let mut vlink: Vec<String> = vec!["1".to_string()];
-    let mut qlink: Vec<String> = vec!["1".to_string()];
-
-    let video_source: String = auxfunctions::get_source(url).unwrap();
-
-    loop {
-        if is_puj.is_match(&video_source) && !pdone {
-
-            plink.push(auxfunctions::decode_base64(
-                is_puj
-                    .captures(&video_source)
-                    .unwrap()
-                    .get(2)
-                    .unwrap()
-                    .as_str()
-                    .to_string()
-            ));
-
-            pdone = true;
-        } else if is_zeus.is_match(&video_source) && !zdone {
-        
-            let mut embedded_link: String = "https://www.solidfiles.com/e".to_string();
-            embedded_link.push_str(&auxfunctions::decode_base64(
-                is_zeus
-                    .captures(&video_source)
-                    .unwrap()
-                    .get(2)
-                    .unwrap()
-                    .as_str()
-                    .to_string()
-            ));
-
-            // regex para obtener el archivo mp4 (zeus)
-            let get_video_link = Regex::new("(\"streamUrl\":\")(.*)(\",\"nodeName)").unwrap();
-            let embedded_source: String = auxfunctions::get_source(embedded_link).unwrap();
-
-            if get_video_link.is_match(&embedded_source) {
-                zlink.push(get_video_link
-                    .captures(&embedded_source)
-                    .unwrap()
-                    .get(2)
-                    .unwrap()
-                    .as_str()
-                    .to_string()
-                    );
+            for i in servers.members() {
+                if ["YourUpload", "Maru", "Stape"].contains(&i["title"].to_string().as_str()) {
+                    anime_episode.servers.push(
+                        super::AnimeEpisodeView {
+                            title: i["title"].to_string(),
+                            url: if ! i["url"].is_null() { i["url"].to_string() } else { "".to_string() },
+                            code: i["code"].to_string(),
+                        }
+                    )
                 }
-
-            zdone = true;
-        } else if is_fembed.is_match(&video_source) && !fdone {
-
-            let mut postreq_link: String = "https://fembed-hd.com/api/source/".to_string();
-            postreq_link.push_str(&auxfunctions::decode_base64(
-                is_fembed
-                    .captures(&video_source)
-                    .unwrap()
-                    .get(2)
-                    .unwrap()
-                    .as_str()
-                    .to_string()
-            ));
-
-            let get_video_link = Regex::new("(,.\"file\":\"https:././fvs.io./)(.*)(\",\"label\":\"720p\")").unwrap();
-            let postreq_source: String = auxfunctions::post_request(postreq_link).unwrap();
-            let mut link: String = "https://fvs.io/".to_string();
-
-            if get_video_link.is_match(&postreq_source) {
-                link.push_str(get_video_link
-                        .captures(&postreq_source)
-                        .unwrap()
-                        .get(2)
-                        .unwrap()
-                        .as_str()
-                );
-
-                flink.push(link);
-                
             }
 
-            fdone = true;
-        } else if is_videobin.is_match(&video_source) && !vdone {
-
-            let mut embedded_link: String = "https://videobin.co".to_string();
-            embedded_link.push_str(&auxfunctions::decode_base64(
-                is_videobin
-                    .captures(&video_source)
-                    .unwrap()
-                    .get(2)
-                    .unwrap()
-                    .as_str()
-                    .to_string(),
-            ));
- 
-            vlink.push(embedded_link);
-
-            // regex para obtener el archivo mp4 (videobin)
-            let get_video_link = Regex::new("(sources: .\".*\")(.*)(\".*)").unwrap();
-            let embedded_source: String = auxfunctions::get_source(vlink.index(1).to_string()).unwrap();
-
-            if get_video_link.is_match(&embedded_source) {
-                vlink.push(get_video_link
-                    .captures(&embedded_source)
-                    .unwrap()
-                    .get(2)
-                    .unwrap()
-                    .as_str()
-                    .to_string()
-                    );
-                }
-
-            vdone = true;
-        } else if is_uqload.is_match(&video_source) && !qdone {
-            
-            let mut embedded_link: String = "https://uqload.com/".to_string();
-            embedded_link.push_str(&auxfunctions::decode_base64(
-                is_uqload
-                    .captures(&video_source)
-                    .unwrap()
-                    .get(2)
-                    .unwrap()
-                    .as_str()
-                    .to_string()
-            ));
-
-            qlink.push(embedded_link);
-
-            // regex para obtener el archivo mp4 (uqload)
-            let get_video_link = Regex::new("(sources: .\")(.*)(\".)").unwrap();
-            let embedded_source: String = auxfunctions::get_source(qlink.index(1).to_string()).unwrap();
-
-            if get_video_link.is_match(&embedded_source) {
-                qlink.push(get_video_link
-                    .captures(&embedded_source)
-                    .unwrap()
-                    .get(2)
-                    .unwrap()
-                    .as_str()
-                    .to_string()
-                    );
-                }
-
-            qdone = true;
-        } else {
-            break;
+            list.push(anime_episode);
         }
     }
-    return vec![flink, zlink, plink, vlink, qlink]
+
+    list
 }
 
-fn getargs(links: Vec<Vec<String>>) -> String {
-    for n in 0..links.len() {
-        if links[n][0] == "0" && links[n].len() == 2 {
-            return format!("setsid -f mpv --really-quiet \"{}\"",
-                links[n].index(1).to_string())
-        } else if links[n][0] == "1" && links[n].len() == 3 {
-            return format!("setsid -f mpv --really-quiet --http-header-fields=\"Referer:{}\" \"{}\"",
-                links[n].index(1).to_string(),
-                links[n].index(2).to_string())
-        } else {
-            String::new()
-        };
-    };
+fn getargs(server: &super::AnimeEpisodeView) -> String {
+    if server.title == "YourUpload" {
+        return format!("iina -no-stdin --keep-running \"{}\"", server.code);
+    }
+    if server.title == "Maru" {
+        return format!("iina -no-stdin --keep-running \"{}\"", server.code);
+    }
+//    if server.title == "Stape" {
+//        let source = auxfunctions::get_source(server.url.clone()).unwrap();
+////            println!("source: {:#?}", source);
+////            let get_path_video_auth = Regex::new("streamtape\\.com\\/get_video\\?(.*)<\\/div>\\n<div id").unwrap().captures(&source).unwrap();
+////            let url = format!("https://tapewithadblock.com/get_video?{}", get_path_video_auth.get(1).unwrap().as_str());
+//        let get_path_video_auth = Regex::new("streamtape\\.com\\/get_video\\?(.*)<\\/div>\\n<div id").unwrap().captures(&source).unwrap();
+//        let url = format!("https://streamtape.com/get_video?{}", get_path_video_auth.get(1).unwrap().as_str());
+//        println!("get_path_video_auth: {:#?}", url);
+//        return format!("iina -no-stdin --keep-running \"{}\"", url);
+//    }
 
     String::new()
 }
 
-pub fn mpv(nombre: &String, links: &[String], episodio: i32) {
-    
-    let episode_links: Vec<Vec<String>> = episode_link_scrapper(links.index(episodio as usize).to_string());
-    let args: String = getargs(episode_links);
+pub fn mpv(anime: &super::Anime, episodes: &Vec<String>, episode_selection: u16, failed_server: bool) {
+    let episode_langs: Vec<super::AnimeEpisode> = episode_link_scrapper(episodes[episode_selection as usize].to_string());
+
+    let episode_lang_selection: u16 = choose_lang(&episode_langs);
+
+    let episode = episode_langs.index(episode_lang_selection as usize);
+
+    let episode_server_selection: u16 = if failed_server { choose_server(&episode.servers) } else { 0 };
+
+    let server = episode.servers.index(episode_server_selection as usize);
+
+    let args: String = getargs(&server);
 
     if !args.is_empty() {
         let mpv_command = Command::new("sh")
@@ -341,62 +261,60 @@ pub fn mpv(nombre: &String, links: &[String], episodio: i32) {
 
         drop(mpv_command);
 
-        if links.len() == 1 {
-            println!("Viendo \"{}\".\n", nombre);
+        if episode.servers.len() == 1 {
+            println!("\nViendo \"{}\".\nServidor: {}.\n", anime.title, server.title);
         } else {
-            println!(
-                "Viendo \"{}\", episodio {}.\n",
-                nombre,
-                episodio + 1
-            );
+            println!("\nViendo \"{}\", episodio {}.\nServidor: {}.\n", anime.title, episode_selection + 1, server.title);
         }
-        controller(episodio, links.to_vec(), nombre);
+        controller(episode_selection, episodes.to_vec(), anime);
     } else {
         println!("No se encontró ningun servidor útil.");
-        mpv(nombre, &links, choose_index(links.len(), format!("episodio [1-{}]", links.len()).as_str()));
+        mpv(anime, &episodes, choose_episode(&episodes), failed_server);
     };
 }
 
-fn controller(index: i32, links: Vec<String>, nombre: &String) {
-    let mut case: i8 = 0;
-    let linkslen = links.len();
+fn controller(episode_selection: u16, episodes: Vec<String>, anime: &super::Anime) {
+    let mut case: u8 = 0;
+    let linkslen = episodes.len();
 
     loop {
         let mut prompt = String::from("");
 
-        if index == 0 && index + 1 == linkslen.try_into().unwrap() {
-        } else if index == 0 {
-            prompt.push_str("[s] Siguiente episodio\n");
+        if episode_selection == 0 && episode_selection + 1 == linkslen as u16 {
+        } else if episode_selection == 0 {
+            prompt.push_str("[s] Siguiente\n");
             case = 1;
-        } else if index + 1 == linkslen.try_into().unwrap() {
-            prompt.push_str("[a] Anterior episodio\n");
+        } else if episode_selection + 1 == linkslen as u16 {
+            prompt.push_str("[a] Anterior\n");
             case = 2;
         } else {
-            prompt.push_str("[a] Anterior episodio\n[s] Siguiente Episodio\n");
+            prompt.push_str("[a] Anterior\n[s] Siguiente\n");
             case = 3;
         }
 
-        prompt.push_str("[r] Ver de nuevo\n[o] Seleccionar otro episodio\n[b] Buscar otro anime\n[q] Salir\nEscoge una opción");
+        prompt.push_str("[f] Probar otro servidor\n[l] Lista de episodios\n[b] Buscar anime\n[q] Salir\nEscoge una opción");
 
-        let opcion: String = Input::new().with_prompt(prompt).interact().unwrap();
-        let opcion = opcion.trim().to_string();
+        let option: String = Input::new()
+            .with_prompt(
+                color_menu(&prompt)
+            )
+            .interact()
+            .unwrap();
 
-        if opcion.to_lowercase() == "q" {
+        let option = option.trim().to_lowercase();
+
+        if option == "q" {
             std::process::exit(0);
-        } else if opcion.to_lowercase() == "b" {
+        } else if option == "b" {
             break();
-        } else if opcion.to_lowercase() == "r" {
-            mpv(nombre, &links, index);
-        } else if opcion.to_lowercase() == "o" {
-            mpv(nombre, &links, choose_index(links.len(), format!("episodio [1-{}]", links.len()).as_str()));
-        } else if case == 1 && opcion.to_lowercase() == "s" {
-            mpv(nombre, &links, index+1);
-        } else if case == 2 && opcion.to_lowercase() == "a" {
-            mpv(nombre, &links, index - 1);
-        } else if case == 3 && opcion.to_lowercase() == "s" {
-            mpv(nombre, &links, index + 1);
-        } else if case == 3 && opcion.to_lowercase() == "a" {
-            mpv(nombre, &links, index - 1);
+        } else if option == "f" {
+            mpv(anime, &episodes, episode_selection, true);
+        } else if option == "l" {
+            mpv(anime, &episodes, choose_episode(&episodes), false);
+        } else if [1, 3].contains(&case) && option == "s" {
+            mpv(anime, &episodes, episode_selection + 1, false);
+        } else if [2, 3].contains(&case) && option == "a" {
+            mpv(anime, &episodes, episode_selection - 1, false);
         } else {
             println!("Escoge una opción valida.\n");
             continue;

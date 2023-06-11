@@ -1,65 +1,44 @@
 extern crate getopts;
 use dialoguer::Input;
-use getopts::Options;
-use std::env;
-use std::ops::Index;
+
+mod structs;
+use structs::{Anime, AnimeEpisode, AnimeEpisodeView};
 
 mod mainfunctions;
-use mainfunctions::{search_query, query_results, choose_anime, get_episodes, choose_index, mpv};
+use mainfunctions::{search_query, query_results, choose_anime, choose_episode, get_episodes, color_menu, mpv};
 
 fn main() {
+    loop {
+        let query: String = Input::new()
+            .with_prompt(
+                color_menu("Buscar animé")
+            )
+            .interact()
+            .unwrap();
 
-    // unix args
-    let mut checked: bool = false;
-    let args: Vec<String> = env::args().collect();
-    let project_name = option_env!("PROJECT_NAME").unwrap_or("anicli-es");
-    let mut options = Options::new();
-    options.optflag("h", "help", "obtener ayuda para los comandos");
+        let animes: Vec<Anime> = query_results(
+            search_query(query.trim().to_string())
+        );
 
-    let matches = match options.parse(&args[1..]) {
-        Ok(m) => m,
-        Err(f) => {
-            panic!("{}", f.to_string())
-        }
-    };
-
-    if matches.opt_present("h") {
-        let brief = format!("Uso: {} [busqueda] [opciones]", project_name);
-        print!("{}", options.usage(&brief));
-        return;
-    };
-
-    // main loop
-    loop { 
-
-        let query: String =
-            if !matches.free.is_empty() && !checked {
-                checked = true;
-                matches.free[0].clone()
-            } else {
-                Input::new().with_prompt("Buscar animé").interact().unwrap()
-            };
-
-        let resultados: Vec<Vec<String>> = query_results(search_query(query.trim().to_string()));
-
-        if resultados[0].is_empty() {
+        if animes.is_empty() {
             println!("No se encontró ningun animé con ese nombre.");
             continue;
         }
 
-        let seleccion: i32 = choose_anime(&resultados);
-        println!("Elegiste {}", resultados[0][seleccion as usize].as_str());
+        let anime_seleccion: usize = choose_anime(&animes) as usize;
 
-        let episodios: Vec<String> = get_episodes(resultados[2].index(seleccion as usize).to_string());
+        let episodes: Vec<String> = get_episodes(animes[anime_seleccion].link.to_string());
 
-        if episodios.is_empty() {
+        if episodes.is_empty() {
             println!("No se encontrarón episodios, intenta con otro animé.");
             continue;
-        } 
+        }
 
         mpv(
-            resultados.index(0).index(seleccion as usize),
-            &episodios,
-            choose_index(episodios.len(), format!("episodio [1-{}]", episodios.len()).as_str()));
+            &animes[anime_seleccion],
+            &episodes,
+            choose_episode(&episodes),
+            false
+       )
     }
 }

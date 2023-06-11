@@ -12,5 +12,11 @@ description = "Herramienta para ver animé, subtitulado al español, en la líne
 base64 = "0.13.0"
 dialoguer = "0.10.2"
 getopts = "0.2"
+json = "0.12.4"
 regex = "1.5"
 ureq = "2.4.0"
+
+[[bin]]
+edition = "2021"
+name = "anicli-es"
+path = "src/main.rs"
