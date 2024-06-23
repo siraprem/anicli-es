@@ -221,10 +221,10 @@ pub fn episode_link_scrapper(url: String) -> Vec<super::AnimeEpisode> {
 
 fn getargs(server: &super::AnimeEpisodeView) -> String {
     if server.title == "YourUpload" {
-        return format!("iina -no-stdin --keep-running \"{}\"", server.code);
+        return format!("mpv \"{}\"", server.code);
     }
     if server.title == "Maru" {
-        return format!("iina -no-stdin --keep-running \"{}\"", server.code);
+        return format!("mpv \"{}\"", server.code);
     }
 //    if server.title == "Stape" {
 //        let source = auxfunctions::get_source(server.url.clone()).unwrap();
