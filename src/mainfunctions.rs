@@ -221,26 +221,27 @@ pub fn episode_link_scrapper(url: String) -> Vec<super::AnimeEpisode> {
 
 fn getargs(server: &super::AnimeEpisodeView) -> String {
     if server.title == "YourUpload" {
-        return format!("mpv \"{}\"", server.code);
+        return format!("mpv --idle --no-terminal \"{}\"", server.code);
     }
     if server.title == "Maru" {
-        return format!("mpv \"{}\"", server.code);
+        return format!("mpv --idle  --no-terminal \"{}\"", server.code);
     }
-//    if server.title == "Stape" {
-//        let source = auxfunctions::get_source(server.url.clone()).unwrap();
-////            println!("source: {:#?}", source);
-////            let get_path_video_auth = Regex::new("streamtape\\.com\\/get_video\\?(.*)<\\/div>\\n<div id").unwrap().captures(&source).unwrap();
-////            let url = format!("https://tapewithadblock.com/get_video?{}", get_path_video_auth.get(1).unwrap().as_str());
-//        let get_path_video_auth = Regex::new("streamtape\\.com\\/get_video\\?(.*)<\\/div>\\n<div id").unwrap().captures(&source).unwrap();
-//        let url = format!("https://streamtape.com/get_video?{}", get_path_video_auth.get(1).unwrap().as_str());
-//        println!("get_path_video_auth: {:#?}", url);
-//        return format!("iina -no-stdin --keep-running \"{}\"", url);
-//    }
+    if server.title == "Stape" {
+        let source = auxfunctions::get_source(server.url.clone()).unwrap();
+            println!("source: {:#?}", source);
+            let get_path_video_auth = Regex::new("streamtape\\.com\\/get_video\\?(.*)<\\/div>\\n<div id").unwrap().captures(&source).unwrap();
+            let source = format!("https://tapewithadblock.com/get_video?{}", get_path_video_auth.get(1).unwrap().as_str());
+        let get_path_video_auth = Regex::new("streamtape\\.com\\/get_video\\?(.*)<\\/div>\\n<div id").unwrap().captures(&source).unwrap();
+        let url = format!("https://streamtape.com/get_video?{}", get_path_video_auth.get(1).unwrap().as_str());
+        println!("get_path_video_auth: {:#?}", url);
+        return format!("mpv --idle  --no-terminal \"{}\"", server.code);
+    }
 
     String::new()
 }
 
 pub fn mpv(anime: &super::Anime, episodes: &Vec<String>, episode_selection: u16, failed_server: bool) {
+
     let episode_langs: Vec<super::AnimeEpisode> = episode_link_scrapper(episodes[episode_selection as usize].to_string());
 
     let episode_lang_selection: u16 = choose_lang(&episode_langs);
