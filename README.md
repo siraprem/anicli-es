@@ -12,4 +12,6 @@ Fork del Fork... Apenas para cambiar de IINA a MPV
 
 ## Dependencias
 
-* MPV
+* [MPV](https://mpv.io/installation/)
+* cargo(curl https://sh.rustup.rs -sSf | sh)
+* [cargo-run-bin](https://crates.io/crates/cargo-run-bin)
